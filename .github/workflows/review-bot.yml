@@ -1,0 +1,51 @@
+name: review-bot eval
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: review-bot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out eval repo
+        uses: actions/checkout@v4
+
+      - name: Check out review-bot source
+        uses: actions/checkout@v4
+        with:
+          repository: sachinkundu/deos-review
+          ref: review-bot-phase-1/impl
+          path: review-bot-src
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.12.3"
+
+      - name: Write review-bot credentials
+        working-directory: review-bot-src
+        env:
+          APP_ID: ${{ secrets.REVIEW_BOT_APP_ID }}
+          INSTALLATION_ID: ${{ secrets.REVIEW_BOT_INSTALLATION_ID }}
+          PRIVATE_KEY: ${{ secrets.REVIEW_BOT_PRIVATE_KEY }}
+          BOT_USERNAME: ${{ secrets.REVIEW_BOT_BOT_USERNAME }}
+        run: |
+          cat > .env <<EOF
+          GITHUB_APP_ID=${APP_ID}
+          GITHUB_APP_INSTALLATION_ID=${INSTALLATION_ID}
+          GITHUB_APP_PRIVATE_KEY=/tmp/review-bot-key.pem
+          GITHUB_APP_BOT_USERNAME=${BOT_USERNAME}
+          REVIEW_WORKSPACE_ROOT=${{ runner.temp }}/review-bot-workspaces
+          EOF
+          printf '%s' "${PRIVATE_KEY}" > /tmp/review-bot-key.pem
+
+      - name: Run review-bot
+        working-directory: review-bot-src
+        run: |
+          uv sync --extra dev
+          uv run review-bot "${{ github.event.pull_request.html_url }}"
